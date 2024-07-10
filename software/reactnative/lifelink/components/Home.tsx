@@ -1,10 +1,9 @@
 import { View, Text } from "react-native";
 
-
-export function Component() {
+export function Home() {
   return (
     <View>
-      <Text>Testing testing!</Text>
+      <Text className="px-4">Testing testing!</Text>
     </View>
   )
 }
