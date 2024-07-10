@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import base64
 from io import BytesIO
 from PIL import Image
+import cv2
 
 import pyperclip
 
@@ -18,11 +19,11 @@ def handle_post():
     data = request.get_json()
     base64_string = data['image']
     pyperclip.copy(base64_string)
-    print('Copied!')
+    print('Image Recieved - Base64 Copied!')
     image_data = base64.b64decode(base64_string)
 
     image = Image.open(BytesIO(image_data))
-    # image.show()
+    cv.imshow(image)
     
     response_data = {
         "message": "This is a POST request",
