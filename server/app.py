@@ -3,6 +3,8 @@ import base64
 from io import BytesIO
 from PIL import Image
 
+import pyperclip
+
 app = Flask(__name__)
 
 @app.route('/', methods=['GET'])
@@ -15,10 +17,12 @@ def handle_get():
 def handle_post():
     data = request.get_json()
     base64_string = data['image']
+    pyperclip.copy(base64_string)
+    print('Copied!')
     image_data = base64.b64decode(base64_string)
 
     image = Image.open(BytesIO(image_data))
-    image.show()
+    # image.show()
     
     response_data = {
         "message": "This is a POST request",
