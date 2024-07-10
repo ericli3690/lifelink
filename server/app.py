@@ -1,10 +1,8 @@
 from flask import Flask, request, jsonify
-import base64
-from io import BytesIO
-from PIL import Image
 import cv2
-
 import pyperclip
+
+from image_process import color_correct_image, draw_faces
 
 app = Flask(__name__)
 
@@ -16,17 +14,19 @@ def handle_get():
 
 @app.route('/', methods=['POST'])
 def handle_post():
+    # Get base64 string
     data = request.get_json()
     base64_string = data['image']
     pyperclip.copy(base64_string)
     print('Image Recieved - Base64 Copied!')
-    image_data = base64.b64decode(base64_string)
 
-    image = Image.open(BytesIO(image_data))
-    cv.imshow(image)
+    # Color Correction & Draw Faces
+    image = color_correct_image(base64_string, 0, False)
+    draw_faces(image)
+    cv2.imwrite('face_detect.png', image)
     
     response_data = {
-        "message": "This is a POST request",
+        "message": "Image succesfully recieved.",
         "received_data": data
     }
     return jsonify(response_data)
