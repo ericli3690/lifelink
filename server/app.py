@@ -5,6 +5,17 @@ app = Flask(__name__)
 @app.route('/', methods=['GET'])
 def handle_get():
     response_data = {"message": "This is a GET request"}
+    print("|| GET RECEIVED")
+    return jsonify(response_data)
+
+@app.route('/', methods=['POST'])
+def handle_post():
+    data = request.get_json()
+    print(data)
+    response_data = {
+        "message": "This is a POST request",
+        "received_data": data
+    }
     return jsonify(response_data)
 
 if __name__ == '__main__':
