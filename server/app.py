@@ -1,4 +1,7 @@
 from flask import Flask, request, jsonify
+import base64
+from io import BytesIO
+from PIL import Image
 
 app = Flask(__name__)
 
@@ -11,7 +14,12 @@ def handle_get():
 @app.route('/', methods=['POST'])
 def handle_post():
     data = request.get_json()
-    print(data)
+    base64_string = data['image']
+    image_data = base64.b64decode(base64_string)
+
+    image = Image.open(BytesIO(image_data))
+    image.show()
+    
     response_data = {
         "message": "This is a POST request",
         "received_data": data
