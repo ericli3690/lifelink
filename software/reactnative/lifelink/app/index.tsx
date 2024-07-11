@@ -19,7 +19,7 @@ export default function Index() {
         <Text className="text-white font-bold text-xl">LifeLink</Text>
       </View>
 
-      <SafeAreaView>
+      <SafeAreaView className="bg-stone-200 h-full">
         <Home />
       </SafeAreaView>
     </>

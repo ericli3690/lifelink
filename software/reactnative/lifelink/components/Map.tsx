@@ -34,16 +34,16 @@ export default function Map() {
       // await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       //   accuracy: Location.Accuracy.Balanced
       // })
-    })
+    })();
   }, []);
 
   return (
-    <MapView className="w-max h-3/5"
+    <MapView className="w-max h-full pointer-events-auto"
       region={{
         latitude: userLocation.coords.latitude,
         longitude: userLocation.coords.longitude,
-        latitudeDelta: 0.002,
-        longitudeDelta: 0.002,
+        latitudeDelta: 0.004,
+        longitudeDelta: 0.004,
       }}
     />
   )
