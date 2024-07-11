@@ -1,9 +1,11 @@
 import { View, Text } from "react-native";
+import Map from "./Map";
 
 export function Home() {
   return (
-    <View>
-      <Text className="px-4">Testing testing!</Text>
+    <View className="px-4">
+      <Text>Testing testing!</Text>
+      <Map />
     </View>
   )
 }

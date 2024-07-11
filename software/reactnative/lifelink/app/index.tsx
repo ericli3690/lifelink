@@ -8,6 +8,7 @@ import ExpoStatusBar from "expo-status-bar/build/ExpoStatusBar";
 export default function Index() {
   return (
     <>
+      <ExpoStatusBar backgroundColor="#FC4F42" />
       <StatusBar backgroundColor="#FC4F42" />
       
       <View className="flex flex-row bg-[#FC4F42] h-14 items-center p-4">
@@ -16,7 +17,6 @@ export default function Index() {
       </View>
 
       <SafeAreaView>
-        
         <Home />
       </SafeAreaView>
     </>
