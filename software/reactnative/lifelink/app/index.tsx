@@ -1,14 +1,17 @@
 import { Home } from "@/components/Home";
-import { Image, Text, View, StatusBar } from "react-native";
+import { Text, View, StatusBar } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { SvgUri } from "react-native-svg";
 import Suitcase from '@/assets/images/suitcase.svg';
-import ExpoStatusBar from "expo-status-bar/build/ExpoStatusBar";
+import { useEffect } from "react";
 
 export default function Index() {
+
+  useEffect(() => {
+    StatusBar.setBackgroundColor("#FC4F42");
+  }, [])
+  
   return (
     <>
-      <ExpoStatusBar backgroundColor="#FC4F42" />
       <StatusBar backgroundColor="#FC4F42" />
       
       <View className="flex flex-row bg-[#FC4F42] h-14 items-center p-4">
