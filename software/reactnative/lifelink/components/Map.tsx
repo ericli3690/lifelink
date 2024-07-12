@@ -5,29 +5,29 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import { useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { app } from '@/firebaseConfig.js';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, onSnapshot } from 'firebase/firestore';
 
 // const LOCATION_TASK_NAME = 'background-location-task';
 const BACKGROUND_FETCH_TASK = 'background-fetch';
 
-const fetchEmergenciesAndNotify = () => {
+const fetchEmergenciesAndNotify = async () => {
 
-  console.log(new Date().toUTCString());
+  console.log(`Background fetch fired at ${new Date().toUTCString()}.`);
 
-  // useEffect(() => {
-  //   (async () => {
-  //     const db = getFirestore(app);
-  //     const query = await getDocs(collection(db, "emergencies"));
-  //     query.forEach(document => {
-  //       console.log(document.data());
-  //     });
-  //   })();
-  // }, []);
+  const db = getFirestore(app);
+  const unsub = onSnapshot(doc(db, "emergencies", "most-recentt"), doc => {
+    console.log(doc.data()?.diagnosis);
+  });
+
+  // const query = await getDocs(collection(db, "emergencies"));
+  // query.forEach(document => {
+  //   console.log(document.data());
+  // });
 
 }
 
 TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
-  fetchEmergenciesAndNotify(); // action
+  await fetchEmergenciesAndNotify(); // action
   return BackgroundFetch.BackgroundFetchResult.NewData; // finish
 });
 
@@ -58,10 +58,13 @@ export default function Map() {
 
       // also register background fetch
       BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK, {
-        minimumInterval: 5, // seconds
+        minimumInterval: 5, // seconds (actually fires every 30 seconds but im too scared to touch this)
         stopOnTerminate: false,
         startOnBoot: true
       });
+
+      // also do it in the foreground too
+      setInterval(fetchEmergenciesAndNotify, 1000 * 30); // every thirty seconds
 
       // old background location code
 
