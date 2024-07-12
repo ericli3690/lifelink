@@ -7,12 +7,12 @@ import { Alert } from "react-native";
 import { app } from '@/firebaseConfig.js';
 import { getFirestore, collection, getDocs } from 'firebase/firestore';
 
-const LOCATION_TASK_NAME = 'background-location-task';
+// const LOCATION_TASK_NAME = 'background-location-task';
 const BACKGROUND_FETCH_TASK = 'background-fetch';
 
 const fetchEmergenciesAndNotify = () => {
 
-  console.log("fetched.");
+  console.log(new Date().toUTCString());
 
   // useEffect(() => {
   //   (async () => {
@@ -63,9 +63,15 @@ export default function Map() {
         startOnBoot: true
       });
 
+      // old background location code
+
       // await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       //   accuracy: Location.Accuracy.Balanced
       // })
+      // .catch(e => {
+      //   Alert.alert(`An error occured: ${e.code}`, `${e.message}`);
+      // });
+
     })();
     
   }, []);
@@ -82,6 +88,8 @@ export default function Map() {
   )
 }
 
+// old background location code
+
 // type TaskData = {
 //   locations?: Array<Location.LocationObject>;
 // }
@@ -94,5 +102,6 @@ export default function Map() {
 //   if (data) {
 //     const { locations } = data;
 //     // can do stuff with locations here
+//     console.log("locations");
 //   }
 // });
