@@ -1,15 +1,40 @@
 import MapView from "react-native-maps";
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import * as BackgroundFetch from 'expo-background-fetch';
 import { useEffect, useState } from "react";
 import { Alert } from "react-native";
+import { app } from '@/firebaseConfig.js';
+import { getFirestore, collection, getDocs } from 'firebase/firestore';
 
 const LOCATION_TASK_NAME = 'background-location-task';
+const BACKGROUND_FETCH_TASK = 'background-fetch';
+
+const fetchEmergenciesAndNotify = () => {
+
+  console.log("fetched.");
+
+  // useEffect(() => {
+  //   (async () => {
+  //     const db = getFirestore(app);
+  //     const query = await getDocs(collection(db, "emergencies"));
+  //     query.forEach(document => {
+  //       console.log(document.data());
+  //     });
+  //   })();
+  // }, []);
+
+}
+
+TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
+  fetchEmergenciesAndNotify(); // action
+  return BackgroundFetch.BackgroundFetchResult.NewData; // finish
+});
 
 export default function Map() {
 
   const [userLocation, setUserLocation]: any = useState({
-    coords: {
+    coords: { // some default coords in san francisco cus why not
       latitude: 37,
       longitude: -122
     }
@@ -31,10 +56,18 @@ export default function Map() {
       let location = await Location.getCurrentPositionAsync({});
       setUserLocation(location);
 
+      // also register background fetch
+      BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK, {
+        minimumInterval: 5, // seconds
+        stopOnTerminate: false,
+        startOnBoot: true
+      });
+
       // await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       //   accuracy: Location.Accuracy.Balanced
       // })
     })();
+    
   }, []);
 
   return (
