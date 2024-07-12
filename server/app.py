@@ -22,12 +22,17 @@ def handle_post():
 
     # Get base64 string
     data = request.get_json()
+
+    # Occasional glitch allows for "Confirm & Send ->" to be a symptom - clean that up
+    if(data['symptoms'][-1] == "Confirm & Send ->"):
+        data['symptoms'].pop()
+
     base64_string = data['image']
     symptoms = data['symptoms']
 
     # Debug Data
     pyperclip.copy(base64_string) 
-    print(data)
+    print(f"|| Base64 String Copied to Clipboard \n|| Symptoms: {symptoms} \n|| Lat/Long: {data['latitude']} // {data['longitude']}")
     print("\n\n\n")
 
     # Color Correction & Draw Faces
