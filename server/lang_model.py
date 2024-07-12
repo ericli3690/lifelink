@@ -25,10 +25,10 @@ llm = LlamaCpp(
 def predict_diagnosis(symptoms):
 
     prompt = f"""
-        You are an emergency-aid first responder in the following situation: a victim has suddenly starts expirencing the following symptoms:
-        {("; ").join(symptoms)}. 
-        First, provide the most likely diagnosis for the victim's condition in one sentence followed by a brief description of the condition.
-        Second, provide instructions for what a first responder should do to help ensure the victim survives, based on their condition.
+    You are an emergency-aid first responder in the following situation: a victim has suddenly started experiencing the following symptoms:
+    {("; ").join(symptoms)}. 
+    First, provide the most likely diagnosis for the victim's condition in one sentence followed by a brief description of the condition.
+    Second, provide instructions for what a first responder should do to help ensure the victim survives, based on their condition.
     """
 
     print("Generating Response...")
@@ -44,5 +44,6 @@ def predict_diagnosis(symptoms):
     )
 
     print(output)
+    return output
 
-predict_diagnosis(['Paralysis', 'Choking', 'Extreme pain'])
+# predict_diagnosis(['Paralysis', 'Choking', 'Extreme pain'])
