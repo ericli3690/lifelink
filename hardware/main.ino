@@ -2,12 +2,17 @@
 #include <HTTPClient.h>
 #include "esp_camera.h"
 #include "base64.h"
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <vector>
 
-// Censored for confidentiality
-const char* ssid = "***";
-const char* password = "**";
+// Replace with your network credentials
+const char* ssid = "ROYAL OAK";
+const char* password = "S@dhguru875";
 
-// Temporary locally exposed api endpoint
+// Replace with your API endpoint
 const char* serverName = "http://10.0.0.22:5000/";
 
 // Camera configuration
@@ -31,97 +36,511 @@ const char* serverName = "http://10.0.0.22:5000/";
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-void setup() {
-  Serial.begin(115200);
 
-  // Connect to Wi-Fi
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to Wi-Fi...");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.print(".");
-  }
-  Serial.println(" Connected.");
+// --------------
+/* PERIPHERALS */
+// --------------
 
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
-  config.pin_d0 = Y2_GPIO_NUM;
-  config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM;
-  config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM;
-  config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM;
-  config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_GPIO_NUM;
-  config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM;
-  config.pin_href = HREF_GPIO_NUM;
-  config.pin_sscb_sda = SIOD_GPIO_NUM;
-  config.pin_sscb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn = PWDN_GPIO_NUM;
-  config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG; 
+#define FLASH_PIN 4
 
-  // Init with high specs to pre-allocate larger buffers
-  if (psramFound()) {
-    config.frame_size = FRAMESIZE_UXGA;
-    config.jpeg_quality = 10;
-    config.fb_count = 2;
-  } else {
-    config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 12;
-    config.fb_count = 1;
-  }
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
-  // Initialize the camera
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x", err);
-    return;
-  }
+// Rotary Encoder
+#define SW 12
+#define DT 13
+#define CLK 15
 
-  // Check if WiFi is connected
-  if (WiFi.status() == WL_CONNECTED) {
-    // Capture image
-    camera_fb_t * fb = esp_camera_fb_get();
-    if (!fb) {
-      Serial.println("Camera capture failed");
-      return;
-    }
+#define I2C_SDA 14
+#define I2C_SCL 2
 
-    // Convert image to base64
-    String imageBase64 = base64::encode(fb->buf, fb->len);
+// Declaration for SSD1306 display connected using I2C
+#define OLED_RESET     -1 // Reset pin
+#define SCREEN_ADDRESS 0x3C
 
-    // Send HTTP POST request
-    HTTPClient http;
-    http.begin(serverName);
-    http.addHeader("Content-Type", "application/json");
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-    // Create JSON object with base64 image
-    String jsonPayload = "{\"image\":\"" + imageBase64 + "\"}";
+// ----------------------------
+/* ANIMATIONS & GLOBAL STATE */
+// ----------------------------
 
-    int httpResponseCode = http.POST(jsonPayload);
-    if (httpResponseCode > 0) {
-      String response = http.getString();
-      Serial.println(httpResponseCode);
-      Serial.println(response);
+
+#define HEARTBEAT_FRAME_DELAY (42)
+#define HEARTBEAT_FRAME_WIDTH (32)
+#define HEARTBEAT_FRAME_HEIGHT (32)
+#define HEARTBEAT_FRAME_COUNT (sizeof(heartbeatFrames) / sizeof(heartbeatFrames[0]))
+
+// Animation Global State
+int currentFrame = 0;
+bool startupAnimIsOnLogo = true;
+
+const byte PROGMEM heartbeatFrames[][128] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,62,113,146,124,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,62,113,146,124,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,62,113,146,124,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,62,113,146,124,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,30,113,146,124,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,2,113,146,124,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,9,4,0,0,137,12,0,0,201,12,0,0,81,10,0,0,113,146,124,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,14,0,0,0,9,0,0,0,9,12,0,0,9,12,0,0,25,14,0,0,17,26,0,0,17,26,124,0,16,147,192,0,48,145,128,0,48,177,0,0,0,160,0,0,0,224,0,0,0,224,0,0,0,64,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,14,0,0,0,9,0,0,0,1,12,0,0,1,12,0,0,1,14,0,0,1,26,0,0,1,26,124,0,0,147,192,0,0,145,128,0,0,177,0,0,0,160,0,0,0,224,0,0,0,224,0,0,0,64,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,2,0,0,0,2,0,0,0,1,0,0,0,1,12,0,0,1,12,0,0,1,14,0,0,1,26,0,0,1,26,124,0,0,147,192,0,0,145,128,0,0,177,0,0,0,160,0,0,0,224,0,0,0,224,0,0,0,64,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,12,0,0,0,12,0,0,0,10,0,0,0,18,124,0,0,19,128,0,0,17,128,0,0,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,12,0,0,0,12,0,0,0,10,0,0,0,18,124,0,0,19,128,0,0,17,128,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,124,0,0,3,192,0,0,1,128,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,128,0,0,1,128,0,0,1,0,0,0,2,0,0,0,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,128,0,0,1,128,0,0,1,200,0,0,2,80,0,0,62,112,0,0,0,48,0,0,0,48,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,4,0,0,0,4,0,0,0,8,0,0,0,8,0,0,0,136,0,0,1,136,0,0,1,200,0,0,2,80,0,0,62,112,0,0,0,48,0,0,0,48,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,0,0,1,137,0,0,1,201,0,0,2,81,0,0,62,113,128,0,0,49,128,0,0,48,128,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,14,0,0,0,9,0,0,0,137,0,0,1,137,0,0,1,217,0,0,2,81,0,0,62,81,0,0,0,48,128,0,0,48,128,0,0,48,128,0,0,0,128,0,0,0,224,0,0,0,224,0,0,0,64,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,14,0,0,0,9,0,0,0,137,0,0,1,137,8,0,1,217,8,0,2,81,24,0,62,81,24,0,0,48,144,0,0,48,144,0,0,48,176,0,0,0,160,0,0,0,224,0,0,0,224,0,0,0,64,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,62,113,146,0,0,49,147,0,0,48,144,0,0,32,160,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,62,113,146,64,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,62,113,146,120,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,62,113,146,124,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,62,113,146,124,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,6,0,0,0,11,0,0,0,11,0,0,0,137,4,0,1,137,12,0,1,201,12,0,2,81,10,0,62,113,146,124,0,49,147,128,0,48,145,128,0,32,161,0,0,0,160,0,0,0,224,0,0,0,192,0,0,0,192,0,0,0,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+};
+
+
+#define FACE_ID_FRAME_DELAY (42)
+#define FACE_ID_FRAME_WIDTH (32)
+#define FACE_ID_FRAME_HEIGHT (32)
+#define FACE_ID_FRAME_COUNT (sizeof(faceIDFrames) / sizeof(faceIDFrames[0]))
+
+const byte PROGMEM faceIDFrames[][128] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0,15,192,3,240,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,16,8,16,8,16,7,240,8,16,1,0,8,16,0,0,8,16,0,0,8,16,0,0,8,24,0,0,24,15,192,3,240,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,15,192,3,240,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,16,8,16,8,16,7,240,8,16,1,0,8,16,0,0,8,16,0,0,8,16,0,0,8,24,0,0,24,15,192,3,240,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,7,192,3,224,24,0,0,24,24,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,16,8,16,8,16,7,240,8,16,1,0,8,16,0,0,8,16,0,0,8,24,0,0,24,12,0,0,24,7,192,3,224,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,3,192,7,192,14,0,0,112,24,0,0,16,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,16,8,16,8,16,7,240,8,16,1,0,8,16,0,0,8,24,0,0,24,8,0,0,16,14,0,0,112,3,224,7,224,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,1,224,3,192,15,192,3,240,8,0,0,16,24,0,0,24,24,0,0,24,24,0,0,24,24,0,0,24,8,0,0,8,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,24,8,16,24,24,7,240,24,24,1,0,24,24,0,0,24,24,0,0,16,8,0,0,16,7,192,7,240,1,224,3,192,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,7,128,3,224,28,0,0,56,48,0,0,8,48,0,0,12,32,0,0,4,32,0,0,4,32,0,0,4,32,0,0,4,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,0,8,16,0,32,7,240,4,32,1,0,4,32,0,0,4,32,0,0,4,48,0,0,12,16,0,0,8,28,0,0,56,7,192,3,240,0,0,0,0,0,0,0,0},
+  {0,0,0,0,63,0,0,252,96,0,0,6,64,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,0,8,16,0,0,7,240,0,64,1,0,2,64,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,96,0,0,6,31,0,0,252,0,0,0,0},
+  {30,0,0,252,96,0,0,14,192,0,0,3,192,0,0,3,128,0,0,1,128,0,0,1,128,0,0,1,128,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,0,8,16,0,0,7,240,0,0,1,0,0,128,0,0,1,128,0,0,1,128,0,0,1,128,0,0,1,192,0,0,1,64,0,0,2,112,0,0,14,31,0,0,252},
+  {0,0,0,0,63,0,0,252,96,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,0,8,16,0,0,7,240,0,0,1,0,0,64,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,96,0,0,6,63,0,0,252,0,0,0,0},
+  {0,0,0,0,7,128,1,240,24,0,0,56,32,0,0,4,96,0,0,6,64,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,64,0,0,2,64,0,0,2,64,0,0,2,64,0,0,2,96,0,0,6,32,0,0,4,24,0,0,8,15,128,1,224,0,0,0,0},
+  {0,0,0,0,0,0,0,0,1,224,7,192,6,0,0,96,8,0,0,16,16,0,0,8,48,0,0,12,32,0,0,4,32,0,0,4,32,0,0,4,32,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,0,0,4,32,0,0,4,32,0,0,4,32,0,0,4,32,0,0,4,16,0,0,12,16,0,0,24,8,0,0,16,6,0,0,96,3,224,7,128,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,120,31,0,1,128,1,128,3,0,0,64,6,0,0,32,12,0,0,16,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,32,0,0,0,16,0,0,0,24,0,0,0,12,0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,24,8,0,0,16,12,0,0,48,4,0,0,96,2,0,0,192,1,128,1,128,0,248,30,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,31,248,0,0,112,14,0,0,192,3,0,3,0,1,128,2,0,0,64,4,0,0,96,12,0,0,48,8,0,0,16,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,32,32,8,16,16,96,8,16,24,192,8,16,9,128,8,16,7,0,8,24,2,0,24,8,0,0,16,12,0,0,48,4,0,0,96,2,0,0,64,3,0,1,128,0,192,3,0,0,112,14,0,0,31,248,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,31,248,0,0,112,14,0,0,192,3,0,3,0,1,128,2,0,0,64,4,0,0,96,12,0,0,48,8,0,0,16,24,0,4,24,16,0,12,8,16,0,24,8,16,0,16,8,16,32,32,8,16,16,96,8,16,24,192,8,16,9,128,8,16,7,0,8,24,2,0,24,8,0,0,16,12,0,0,48,4,0,0,96,2,0,0,64,3,0,1,128,0,192,3,0,0,112,14,0,0,31,248,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,31,248,0,0,112,14,0,0,192,3,0,3,0,1,128,2,0,0,64,4,0,0,96,12,0,0,48,8,0,0,16,24,0,4,24,16,0,12,8,16,0,24,8,16,0,16,8,16,32,32,8,16,16,96,8,16,24,192,8,16,9,128,8,16,7,0,8,24,2,0,24,8,0,0,16,12,0,0,48,4,0,0,96,2,0,0,64,3,0,1,128,0,192,3,0,0,112,14,0,0,31,248,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,31,248,0,0,112,14,0,0,192,3,0,3,0,1,128,2,0,0,64,4,0,0,96,12,0,0,48,8,0,0,16,24,0,4,24,16,0,12,8,16,0,24,8,16,0,16,8,16,32,32,8,16,16,96,8,16,24,192,8,16,9,128,8,16,7,0,8,24,2,0,24,8,0,0,16,12,0,0,48,4,0,0,96,2,0,0,64,3,0,1,128,0,192,3,0,0,112,14,0,0,31,248,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,31,248,0,0,112,14,0,0,192,3,0,3,0,1,128,2,0,0,64,4,0,0,96,12,0,0,48,8,0,0,16,24,0,4,24,16,0,12,8,16,0,24,8,16,0,16,8,16,32,32,8,16,16,96,8,16,24,192,8,16,9,128,8,16,7,0,8,24,2,0,24,8,0,0,16,12,0,0,48,4,0,0,96,2,0,0,64,3,0,1,128,0,192,3,0,0,112,14,0,0,31,248,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,31,248,0,0,112,14,0,0,192,3,0,3,0,1,128,2,0,0,64,4,0,0,96,12,0,0,48,8,0,0,16,24,0,4,24,16,0,12,8,16,0,24,8,16,0,16,8,16,32,32,8,16,16,96,8,16,24,192,8,16,9,128,8,16,7,0,8,24,2,0,24,8,0,0,16,12,0,0,48,4,0,0,96,2,0,0,64,3,0,1,128,0,192,3,0,0,112,14,0,0,31,248,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,31,248,0,0,112,14,0,0,192,3,0,3,0,1,128,2,0,0,64,4,0,0,96,12,0,0,48,8,0,0,16,24,0,4,24,16,0,12,8,16,0,24,8,16,0,16,8,16,32,32,8,16,16,96,8,16,24,192,8,16,9,128,8,16,7,0,8,24,2,0,24,8,0,0,16,12,0,0,48,4,0,0,96,2,0,0,64,3,0,1,128,0,192,3,0,0,112,14,0,0,31,248,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,31,248,0,0,112,14,0,0,192,3,0,3,0,1,128,2,0,0,64,4,0,0,96,12,0,0,48,8,0,0,16,24,0,4,24,16,0,0,8,16,0,0,8,16,0,16,8,16,32,32,8,16,0,64,8,16,0,0,8,16,0,0,8,16,1,0,8,24,2,0,24,8,0,0,16,12,0,0,48,4,0,0,96,2,0,0,64,3,0,1,128,0,192,3,0,0,112,14,0,0,31,248,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,60,0,0,96,2,0,1,128,1,128,3,0,0,192,2,0,0,96,4,0,0,32,12,0,0,48,8,0,0,16,8,0,0,16,8,0,0,16,0,0,0,0,0,0,0,0,0,0,0,0,24,0,0,24,8,0,0,16,8,0,0,16,8,0,0,16,12,0,0,48,4,0,0,96,2,0,0,64,3,0,0,128,1,128,1,128,0,64,6,0,0,60,60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,112,15,0,3,128,1,192,6,0,0,96,12,0,0,48,8,0,0,16,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,24,0,0,24,8,0,0,16,12,0,0,32,6,0,0,96,3,128,0,192,0,240,15,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,15,192,3,240,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,16,8,16,8,16,7,240,8,16,1,0,8,16,0,0,8,16,0,0,8,16,0,0,8,24,0,0,24,15,192,3,240,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,15,192,3,240,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,16,8,16,8,16,7,240,8,16,1,0,8,16,0,0,8,16,0,0,8,16,0,0,8,24,0,0,24,15,192,3,240,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,15,192,3,240,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,16,8,16,8,16,7,240,8,16,1,0,8,16,0,0,8,16,0,0,8,16,0,0,8,24,0,0,24,15,192,3,240,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,15,192,3,240,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,16,8,16,8,16,7,240,8,16,1,0,8,16,0,0,8,16,0,0,8,16,0,0,8,24,0,0,24,15,192,3,240,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,15,192,3,240,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,16,8,16,8,16,7,240,8,16,1,0,8,16,0,0,8,16,0,0,8,16,0,0,8,24,0,0,24,15,192,3,240,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,15,192,3,240,24,0,0,24,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,16,0,0,8,0,0,0,0,0,0,0,0,0,32,132,0,0,32,132,0,0,32,132,0,0,0,128,0,0,0,128,0,0,0,128,0,0,3,128,0,0,0,0,0,0,0,0,0,16,8,16,8,16,7,240,8,16,1,0,8,16,0,0,8,16,0,0,8,16,0,0,8,24,0,0,24,15,192,3,240,0,0,0,0,0,0,0,0,0,0,0,0}
+};
+
+
+// Application Global State
+int screenState = 0; // 0 is startup anim, 1 is symptom selection, 2 is confirmation
+
+
+// Rotary Encoder Global State
+int rotaryEncoderPosition = 0; 
+int CLKState, CLKLastState;
+
+bool SWNewPress = false;
+unsigned long SWTimer = 0;
+
+
+
+// Select Screen Global Variables
+int currentElementIndex = 0, prevCurrentElementIndex = 0;
+std::vector<String> symptoms = {
+    "Unconsciousness",
+    "Difficulty breathing",
+    "Chest pain",
+    "Severe bleeding",
+    "Sudden numbness/weakness",
+    "Confusion/disorientation",
+    "Seizures",
+    "Loss of consciousness",
+    "Fainting/lightheadedness",
+    "Severe abdominal pain",
+    "High fever",
+    "Choking",
+    "Severe burns",
+    "Head/neck injury",
+    "Severe headache",
+    "Blurred vision",
+    "Difficulty speaking",
+    "Sudden weakness/paralysis",
+    "Extreme pain",
+    "Severe vomiting/diarrhea",
+    "Severe allergic reaction",
+    "Irregular heartbeat",
+    "Overdose/poisoning",
+    "Severe trauma",
+    "Dizziness/vertigo",
+    "Difficulty swallowing",
+    "Uncontrolled bleeding",
+    "Coughing/vomiting blood",
+    "Sudden & severe pain",
+    "Facial drooping", 
+    "Arm weakness", 
+    "Speech difficulty",
+
+    // Last option is to confirm
+    "Confirm & Send ->"
+};
+
+std::vector<bool> selectedSymptoms = {
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+};
+
+
+// -----------------
+/* WIFI FUNCTIONS */
+// -----------------
+
+void sendImagePostRequest() {
+
+    camera_config_t config;
+    config.ledc_channel = LEDC_CHANNEL_0;
+    config.ledc_timer = LEDC_TIMER_0;
+    config.pin_d0 = Y2_GPIO_NUM;
+    config.pin_d1 = Y3_GPIO_NUM;
+    config.pin_d2 = Y4_GPIO_NUM;
+    config.pin_d3 = Y5_GPIO_NUM;
+    config.pin_d4 = Y6_GPIO_NUM;
+    config.pin_d5 = Y7_GPIO_NUM;
+    config.pin_d6 = Y8_GPIO_NUM;
+    config.pin_d7 = Y9_GPIO_NUM;
+    config.pin_xclk = XCLK_GPIO_NUM;
+    config.pin_pclk = PCLK_GPIO_NUM;
+    config.pin_vsync = VSYNC_GPIO_NUM;
+    config.pin_href = HREF_GPIO_NUM;
+    config.pin_sscb_sda = SIOD_GPIO_NUM;
+    config.pin_sscb_scl = SIOC_GPIO_NUM;
+    config.pin_pwdn = PWDN_GPIO_NUM;
+    config.pin_reset = RESET_GPIO_NUM;
+    config.xclk_freq_hz = 20000000;
+    config.pixel_format = PIXFORMAT_JPEG; 
+
+    Serial.println("Debug setup - config done");
+
+
+    // Init with high specs to pre-allocate larger buffers
+    if (psramFound()) {
+        // IMAGE SIZE
+        config.frame_size = FRAMESIZE_VGA;
+        config.jpeg_quality = 6;
+        config.fb_count = 2;
     } else {
-      Serial.print("Error on sending POST: ");
-      Serial.println(httpResponseCode);
+        config.frame_size = FRAMESIZE_SVGA;
+        config.jpeg_quality = 12;
+        config.fb_count = 1;
     }
 
-    http.end();
+    Serial.println("Debug setup - psram");
 
-    // Return the frame buffer back to the driver for reuse
-    esp_camera_fb_return(fb);
-  } else {
-    Serial.println("Error in WiFi connection");
-  }
+
+    // Initialize the camera
+    esp_err_t err = esp_camera_init(&config);
+    if (err != ESP_OK) {
+        Serial.printf("Camera init failed with error 0x%x", err);
+        return;
+    }
+
+    Serial.println("Debug setup - camera init");
+
+    // Camera Settings
+    sensor_t * s = esp_camera_sensor_get();
+    s->set_brightness(s, 0);     // -2 to 2
+    s->set_contrast(s, 0);       // -2 to 2
+    s->set_saturation(s, 0);     // -2 to 2
+    s->set_special_effect(s, 0); // 0 to 6 (0 - No Effect, 1 - Negative, 2 - Grayscale, 3 - Red Tint, 4 - Green Tint, 5 - Blue Tint, 6 - Sepia)
+    s->set_whitebal(s, 1);       // 0 = disable , 1 = enable
+    s->set_awb_gain(s, 1);       // 0 = disable , 1 = enable
+    s->set_wb_mode(s, 0);        // 0 to 4 - if awb_gain enabled (0 - Auto, 1 - Sunny, 2 - Cloudy, 3 - Office, 4 - Home)
+    s->set_exposure_ctrl(s, 1);  // 0 = disable , 1 = enable
+    s->set_aec2(s, 0);           // 0 = disable , 1 = enable
+    s->set_ae_level(s, 0);       // -2 to 2
+    s->set_aec_value(s, 300);    // 0 to 1200
+    s->set_gain_ctrl(s, 1);      // 0 = disable , 1 = enable
+    s->set_agc_gain(s, 0);       // 0 to 30
+    s->set_gainceiling(s, (gainceiling_t)0);  // 0 to 6
+    s->set_bpc(s, 0);            // 0 = disable , 1 = enable
+    s->set_wpc(s, 1);            // 0 = disable , 1 = enable
+    s->set_raw_gma(s, 1);        // 0 = disable , 1 = enable
+    s->set_lenc(s, 1);           // 0 = disable , 1 = enable
+    s->set_hmirror(s, 0);        // 0 = disable , 1 = enable
+    s->set_vflip(s, 0);          // 0 = disable , 1 = enable
+    s->set_dcw(s, 1);            // 0 = disable , 1 = enable
+    s->set_colorbar(s, 0);       // 0 = disable , 1 = enable
+
+    Serial.println("Debug setup - final");
+
+    // Check if WiFi is connected
+    if (WiFi.status() == WL_CONNECTED) {
+
+        // Turn on flash & Capture image
+        digitalWrite(FLASH_PIN, HIGH); // Flash On
+        camera_fb_t * fb = esp_camera_fb_get();
+
+        if (!fb) {
+            Serial.println("Camera capture failed");
+            return;
+        }
+
+        delay(750);
+        digitalWrite(FLASH_PIN, LOW); // Flash Off
+
+        // Convert image to base64
+        String imageBase64 = base64::encode(fb->buf, fb->len);
+
+        // Send HTTP POST request
+        HTTPClient http;
+        http.begin(serverName);
+        http.addHeader("Content-Type", "application/json");
+
+
+        // Parse Selected Symptoms
+        String selectedSymptomsString = "[";
+        for(int i = 0; i < symptoms.size(); i++) {
+            if(selectedSymptoms[i]) selectedSymptomsString += ("\"" + symptoms[i] + "\",");
+        }
+        selectedSymptomsString.remove(selectedSymptomsString.length() - 1); // Remove last comma
+        selectedSymptomsString += "]";
+
+
+        // Create JSON object 
+        String jsonPayload = "{\"image\":\"" + imageBase64 + "\", \"symptoms\": " + selectedSymptomsString + "\", \"latitude\": 51.04731, \"longitude\": 114.057968" + "}";
+
+        int httpResponseCode = http.POST(jsonPayload);
+        if (httpResponseCode > 0) {
+            String response = http.getString();
+            Serial.println(httpResponseCode);
+            Serial.println(response);
+        } else {
+            Serial.print("Error on sending POST: ");
+            Serial.println(httpResponseCode);
+        }
+
+        http.end();
+
+        // Return the frame buffer back to the driver for reuse
+        esp_camera_fb_return(fb);
+    } else {
+        Serial.println("Error in WiFi connection");
+    }
+}
+
+
+// -----------------------------------------
+/* OLED SCREEN & ROTARY ENCODER UTILITIES */
+// -----------------------------------------
+
+
+void printText(int x, int y, String text, float size=1) {
+    display.setTextSize(size);
+    display.setTextColor(WHITE);
+    display.setCursor(x, y);
+    display.print(text);
+
+    display.display();
+}
+
+void displayStartupAnim() {
+    // Draw Anim
+    display.clearDisplay();
+    display.drawBitmap(48, 16, heartbeatFrames[currentFrame], HEARTBEAT_FRAME_WIDTH, HEARTBEAT_FRAME_HEIGHT, 1);
+
+    // Print Text
+    if(startupAnimIsOnLogo) printText(40, 48, "LifeLink");
+    else printText(5, 48, "Press Knob to Start");
+    display.display();
+
+    // Update Frame rotaryEncoderPosition
+    currentFrame = (currentFrame + 1) % HEARTBEAT_FRAME_COUNT;
+    if(currentFrame % 20 == 0) startupAnimIsOnLogo = !startupAnimIsOnLogo; //Switch text every 20 frames
+    delay(HEARTBEAT_FRAME_DELAY);
+}
+
+void displayFaceVerificationScreen() {
+    // Draw Anim
+    display.clearDisplay();
+    display.drawBitmap(48, 10, faceIDFrames[currentFrame], FACE_ID_FRAME_WIDTH, FACE_ID_FRAME_HEIGHT, 1);
+
+    printText(2, 48, "Press Knob to Verify");
+    display.display();
+
+    if(SWNewPress) {
+        sendImagePostRequest();
+        display.clearDisplay();
+        printText(30, 30, "Request Sent!");
+        delay(5000);
+        screenState = 0;
+    }
+
+    // Update Frame rotaryEncoderPosition
+    currentFrame = (currentFrame + 1) % FACE_ID_FRAME_COUNT;
+    delay(FACE_ID_FRAME_DELAY);
+}
+
+void printInstructions() {
+    // Instructions
+    printText(0, 0, "| Last Option -> Send");
+    printText(0, 10, "| Press -> Select");
+
+    if(currentElementIndex == 32) {
+        // Confirm Selection
+        printText(0, 24, "Confirm Selection & Request Help?");
+        printText(0, 54, ">[Press Knob to Send]");
+    } else {
+        // Current Option
+        printText(0, 24, "Does the victim have:");
+        printText(0, 34, String(currentElementIndex) + ". " + symptoms[currentElementIndex]);
+        printText(0, 54, selectedSymptoms[currentElementIndex] ? "> [Yes]" : "> [No]", 1);
+    }
+
+
+}
+
+void displaySymptomSelectMenu() {
+    
+    printInstructions();
+
+    // Clear screen if index updates
+    if(prevCurrentElementIndex != currentElementIndex) display.clearDisplay();
+    prevCurrentElementIndex = currentElementIndex;
+
+    if(SWNewPress) {
+        display.clearDisplay();
+        selectedSymptoms[currentElementIndex] = !selectedSymptoms[currentElementIndex];
+
+        printInstructions();
+
+        if(currentElementIndex == 32) {
+            screenState = 2;
+            display.clearDisplay();
+        }
+    }
+}
+
+
+void updateRotaryEncoder() {
+    CLKState = digitalRead(CLK); // Reads the "current" state of the outputA
+    
+    if (CLKState != CLKLastState){     
+        // If the outputB state is different to the outputA state, that means the encoder is rotating clockwise
+        if (digitalRead(DT) != CLKState) { 
+            rotaryEncoderPosition--;
+            if(currentElementIndex > 0) currentElementIndex--;
+        } else {
+            rotaryEncoderPosition++;
+            if(currentElementIndex < 32) currentElementIndex++;
+        }
+    }
+    CLKLastState = CLKState;
+
+    // Check for new press on switch
+    int threshold = 50; // time before held press is counted as another press
+    if((digitalRead(SW) == LOW) && ((millis() - SWTimer) > threshold) && (SWTimer != -1)) {
+        SWNewPress = true;
+        SWTimer = -1;
+    } else {
+        SWNewPress = false;
+        SWTimer = millis();
+    }
+
+    delay(1);
+}
+
+
+
+void setup() {
+
+    Wire.setPins(I2C_SDA, I2C_SCL); // Map SDA and SCL to new pins
+    Serial.begin(115200);
+
+    // // Set Pinmodes & Remap I2C
+    pinMode(FLASH_PIN, OUTPUT);
+    pinMode(CLK, INPUT);
+	pinMode(DT, INPUT);
+	pinMode(SW, INPUT_PULLUP);
+
+    // Check if display is working
+    if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+        Serial.println(F("SSD1306 allocation failed"));
+        for(;;); // Loop forever in the case of error
+    }
+
+    display.clearDisplay();
+
+    // Handle Rotary Encoder
+    CLKLastState = digitalRead(CLK);
+    
+    // Connect to Wi-Fi
+    WiFi.begin(ssid, password);
+    Serial.print("Connecting to Wi-Fi...");
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.print(".");
+    }
+    Serial.println(" Connected.");
+    // digitalWrite(FLASH_PIN, LOW);
 }
 
 void loop() {
-  // Put your main code here, to run repeatedly:
+    updateRotaryEncoder();
+
+    if(screenState == 0) { // Logo Screen
+        if(SWNewPress) {
+            screenState = 1;
+            display.clearDisplay();
+        } else {
+            displayStartupAnim();
+        }
+
+
+    } else if(screenState == 1) { // Symptom Select Menu
+        displaySymptomSelectMenu();
+
+    } else if(screenState == 2) {
+        displayFaceVerificationScreen();
+    }
 }
