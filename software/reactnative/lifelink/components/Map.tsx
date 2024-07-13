@@ -1,4 +1,5 @@
 import MapView from "react-native-maps";
+import { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
@@ -10,13 +11,16 @@ import { getFirestore, collection, getDocs, doc, onSnapshot } from 'firebase/fir
 // const LOCATION_TASK_NAME = 'background-location-task';
 const BACKGROUND_FETCH_TASK = 'background-fetch';
 
-const fetchEmergenciesAndNotify = async () => {
+const backgroundFetchEmergenciesAndNotify = async () => {
 
   console.log(`Background fetch fired at ${new Date().toUTCString()}.`);
 
+  // TODO add notification here
+
   const db = getFirestore(app);
-  const unsub = onSnapshot(doc(db, "emergencies", "most-recentt"), doc => {
-    console.log(doc.data()?.diagnosis);
+  const unsub = onSnapshot(doc(db, "emergencies", "most-recent"), doc => {
+    console.log("bg");
+    // console.log(doc.data()?.diagnosis);
   });
 
   // const query = await getDocs(collection(db, "emergencies"));
@@ -27,7 +31,7 @@ const fetchEmergenciesAndNotify = async () => {
 }
 
 TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
-  await fetchEmergenciesAndNotify(); // action
+  await backgroundFetchEmergenciesAndNotify(); // action
   return BackgroundFetch.BackgroundFetchResult.NewData; // finish
 });
 
@@ -40,9 +44,51 @@ export default function Map() {
     }
   });
 
+  const [recentEmergency, setRecentEmergency]: any = useState({
+    diagnosis: "Loading...",
+    image: "",
+    latitude: 0,
+    longitude: 0,
+    symptoms: [],
+    timeOccured: {
+      nanoseconds: 0,
+      seconds: 0
+    }
+  });
+
+  const [otherEmergencies, setOtherEmergencies]: any = useState([]);
+
+  const foregroundFetchEmergenciesAndNotify = async () => {
+
+    console.log(`Foreground fetch fired at ${new Date().toUTCString()}.`);
+
+    // set location
+    let location = await Location.getCurrentPositionAsync({});
+    setUserLocation(location);
+
+    // TODO add notification here
+
+    const db = getFirestore(app);
+    const unsub = onSnapshot(doc(db, "emergencies", "most-recent"), doc => {
+      const cloudRecentEmergency = doc.data();
+      console.log(cloudRecentEmergency?.timeOccured.seconds, recentEmergency.timeOccured.seconds);
+      if (recentEmergency.timeOccured.seconds === 0 || recentEmergency.timeOccured.seconds !== cloudRecentEmergency?.timeOccured.seconds) {
+        // the timestamp has updated, there is a new emergency
+        // send notif and add new marker to map
+        setRecentEmergency(cloudRecentEmergency, () => {
+          console.log("yup");
+          setTimeout(foregroundFetchEmergenciesAndNotify, 1000 * 30); // repeat in 30 seconds
+        });
+        
+      }
+    });
+
+  };
+
   useEffect(() => {
-    // on open, get user location and save to state so that ui updates
     (async () => {
+
+      // on open, get user location and save to state so that ui updates
       let { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
       let { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
       if (foregroundStatus !== 'granted' || backgroundStatus !== 'granted') {
@@ -56,15 +102,15 @@ export default function Map() {
       let location = await Location.getCurrentPositionAsync({});
       setUserLocation(location);
 
-      // also register background fetch
+      // register background fetch
       BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK, {
         minimumInterval: 5, // seconds (actually fires every 30 seconds but im too scared to touch this)
         stopOnTerminate: false,
         startOnBoot: true
       });
 
-      // also do it in the foreground too
-      setInterval(fetchEmergenciesAndNotify, 1000 * 30); // every thirty seconds
+      // register foreground fetch
+      foregroundFetchEmergenciesAndNotify();
 
       // old background location code
 
@@ -76,7 +122,6 @@ export default function Map() {
       // });
 
     })();
-    
   }, []);
 
   return (
@@ -87,7 +132,21 @@ export default function Map() {
         latitudeDelta: 0.004,
         longitudeDelta: 0.004,
       }}
-    />
+    >
+      <Marker
+        key={-2}
+        coordinate={userLocation.coords}
+        title={"Your Location"}
+        description={"You are here."}
+        pinColor={"gold"}
+      />
+      <Marker
+        key={-1}
+        coordinate={{ latitude: recentEmergency.latitude, longitude: recentEmergency.longitude }}
+        title={"Emergency"}
+        description={recentEmergency.diagnosis}
+      />
+    </MapView>
   )
 }
 
