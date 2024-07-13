@@ -3,8 +3,10 @@ import { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
-import { useEffect, useState } from "react";
-import { Alert, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import * as Notifications from 'expo-notifications';
+import { useEffect, useRef, useState } from "react";
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import Constants from 'expo-constants';
 import { app } from '@/firebaseConfig.js';
 import { getFirestore, collection, getDocs, doc, onSnapshot, DocumentData } from 'firebase/firestore';
 
@@ -12,6 +14,24 @@ import { getFirestore, collection, getDocs, doc, onSnapshot, DocumentData } from
 // const BACKGROUND_FETCH_TASK = 'background-fetch';
 
 let recentEmergencyTimestamp = 0;
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true
+  })
+});
+
+const sendNotification = () => {
+  Notifications.scheduleNotificationAsync({
+    content: {
+      title: "New Emergency",
+      body: "Click to view dashboard."
+    },
+    trigger: null
+  });
+}
 
 // const checkForEmergenciesUpdate = async (callback: any) => {
 
@@ -22,7 +42,6 @@ let recentEmergencyTimestamp = 0;
 //   console.log(`Background fetch fired at ${new Date().toUTCString()}.`);
 
 //   await checkForEmergenciesUpdate(() => {
-//     // TODO send notif here
 //     console.log("bg notif fire!!");
 //   });
 
@@ -107,6 +126,26 @@ export default function Map() {
       let location = await Location.getCurrentPositionAsync({});
       setUserLocation(location);
 
+      // prepare notifications
+      // set notification channel
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C'
+      });
+      // get perms
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        Alert.alert('Notification permissions are required for this app to work. Please grant notification permissions in Settings.');
+        return;
+      }
+
       // get recent emergency
       const db = getFirestore(app);
 
@@ -123,6 +162,8 @@ export default function Map() {
           recentEmergencyTimestamp = cloudRecentEmergencyTimestamp;
           setRecentEmergency(cloudRecentEmergency);
           // callback(cloudRecentEmergency); // runs upon successful change
+
+          sendNotification();
           
         }
       });
@@ -132,6 +173,7 @@ export default function Map() {
       let temp: any[] = [];
       query.forEach(doc => {
         temp.push(doc.data());
+        sendNotification();
       });
       setOtherEmergencies(temp);
 
