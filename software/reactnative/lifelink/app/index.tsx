@@ -1,4 +1,4 @@
-import { Home } from "@/components/Home";
+import Map from "@/components/Map";
 import { Text, View, StatusBar } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Suitcase from '@/assets/images/suitcase.svg';
@@ -20,7 +20,7 @@ export default function Index() {
       </View>
 
       <SafeAreaView className="bg-stone-200 h-full">
-        <Home />
+        <Map />
       </SafeAreaView>
     </>
   );
