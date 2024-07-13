@@ -58,6 +58,8 @@ export default function Map() {
 
   const [selectedEmergency, setSelectedEmergency]: any = useState(recentEmergency);
 
+  const [selectedEmergencyTimeElapsedString, setSelectedEmergencyTimeElapsedString]: any = useState("Loading...");
+
   const [currentTime, setCurrentTime]: any = useState(0);
 
   // const foregroundFetchEmergenciesAndNotify = async () => {
@@ -156,7 +158,12 @@ export default function Map() {
 
   useEffect(() => {
     setSelectedEmergency(recentEmergency);
+    console.log(recentEmergency.symptoms);
   }, [recentEmergency]);
+
+  useEffect(() => {
+    setSelectedEmergencyTimeElapsedString(secondsToReading(currentTime - selectedEmergency.timeOccured.seconds));
+  }, [selectedEmergency, currentTime]);
 
   const coordsToLocation = (latitude: number, longitude: number) => {
     fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, {
@@ -170,13 +177,13 @@ export default function Map() {
         return `${latitude}, ${longitude}`;
       });
     // in case of final failure
-    return `${latitude}, ${longitude}`;
+    return 'error';
   }
 
   return (
-    <View className="mx-4 flex">
+    <View className="mx-4 flex h-max flex-1">
       <Text className="text-xl text-stone-800 font-bold mb-2">Active Alerts</Text>
-      <View className="border-4 rounded-sm border-stone-600 h-2/3 opacity-90">
+      <View className="border-4 rounded-sm border-stone-600 h-2/5 opacity-90">
         <MapView className="w-max h-full pointer-events-auto"
           region={{
             latitude: userLocation.coords.latitude,
@@ -200,29 +207,31 @@ export default function Map() {
             onPress={() => {setSelectedEmergency(recentEmergency)}}
           />
           {otherEmergencies.map((otherEmergency: any, index: number) => {
-            <Marker
+            return (<Marker
               key={index}
               coordinate={{ latitude: otherEmergency.latitude, longitude: otherEmergency.longitude }}
               title={"Emergency"}
               description={ otherEmergency.diagnosis }
               onPress={() => {setSelectedEmergency(otherEmergency)}}
-            />
+            />)
           })}
         </MapView>
       </View>
-      <ScrollView className="h-max flex-1">
-        <Text>Emergency at {coordsToLocation(selectedEmergency.latitude, selectedEmergency.longitude)}</Text>
-        <Text>Time elapsed: {secondsToReading(currentTime - selectedEmergency.timeOccured.seconds)}</Text>
-        <Image source={{uri: `data:image/jpg;base64,${selectedEmergency.image}`}} />
-        <View className="flex flex-row">
-          {selectedEmergency.symptoms.map((symptom: any, index: number) => {
-            <View key={index} className="bg-red-500 rounded-sm p-4">
-              <Text className="text-white font-bold">{symptom}</Text>
-            </View>
-          })}
-        </View>
-        <Text>{selectedEmergency.diagnosis}</Text>
-      </ScrollView>
+      <View className="flex-1 border-4 border-stone-600 mt-2 mb-4">
+        <ScrollView className="m-2">
+          <Text>Emergency at {coordsToLocation(selectedEmergency.latitude, selectedEmergency.longitude)}</Text>
+          <Text>Time elapsed: {selectedEmergencyTimeElapsedString}</Text>
+          <Image source={{uri: `data:image/jpeg;base64,${selectedEmergency.image}`}} />
+          <View className="flex flex-row flex-wrap">
+            {selectedEmergency.symptoms.map((symptom: any, index: number) => {
+              return (<View key={index} className="bg-red-500 rounded-xl w-fit p-1 m-1">
+                <Text className="text-white font-bold mx-2">{symptom}</Text>
+              </View>)
+            })}
+          </View>
+          <Text className="bg-stone-400 p-2 rounded-lg">{selectedEmergency.diagnosis.trim().replace(/\s\s+/g,"\n\n")}</Text>
+        </ScrollView>
+      </View>
     </View>
   )
 }

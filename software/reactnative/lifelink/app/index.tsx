@@ -11,7 +11,7 @@ export default function Index() {
   }, [])
   
   return (
-    <>
+    <View className="h-[100vh]">
       <StatusBar backgroundColor="#FC4F42" />
       
       <View className="flex flex-row bg-[#FC4F42] h-14 items-center p-4">
@@ -19,9 +19,9 @@ export default function Index() {
         <Text className="text-white font-bold text-xl">LifeLink</Text>
       </View>
 
-      <SafeAreaView className="bg-stone-200 h-full">
+      <SafeAreaView className="bg-stone-200 flex flex-1">
         <Map />
       </SafeAreaView>
-    </>
+    </View>
   );
 }
