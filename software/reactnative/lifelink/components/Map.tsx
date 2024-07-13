@@ -6,27 +6,42 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import { useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { app } from '@/firebaseConfig.js';
-import { getFirestore, collection, getDocs, doc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, onSnapshot, DocumentData } from 'firebase/firestore';
 
 // const LOCATION_TASK_NAME = 'background-location-task';
 const BACKGROUND_FETCH_TASK = 'background-fetch';
+let recentEmergencyTimestamp = 0;
+
+const checkForEmergenciesUpdate = async (callback: any) => {
+  const db = getFirestore(app);
+
+  const query = await getDocs(collection(db, "emergencies"));
+  query.forEach(doc => {
+
+    const cloudRecentEmergency = doc.data();
+    const cloudRecentEmergencyTimestamp = cloudRecentEmergency?.timeOccured.seconds;
+
+    console.log(cloudRecentEmergencyTimestamp, recentEmergencyTimestamp);
+    
+    if ((recentEmergencyTimestamp === 0) || (recentEmergencyTimestamp != cloudRecentEmergencyTimestamp)) {
+      // the timestamp has updated, there is a new emergency
+      // send notif and add new marker to map
+
+      recentEmergencyTimestamp = cloudRecentEmergencyTimestamp;
+      callback(cloudRecentEmergency); // runs upon successful change
+      
+    }
+  });
+}
 
 const backgroundFetchEmergenciesAndNotify = async () => {
 
   console.log(`Background fetch fired at ${new Date().toUTCString()}.`);
 
-  // TODO add notification here
-
-  const db = getFirestore(app);
-  const unsub = onSnapshot(doc(db, "emergencies", "most-recent"), doc => {
-    console.log("bg");
-    // console.log(doc.data()?.diagnosis);
+  await checkForEmergenciesUpdate(() => {
+    // TODO send notif here
+    console.log("bg notif fire!!");
   });
-
-  // const query = await getDocs(collection(db, "emergencies"));
-  // query.forEach(document => {
-  //   console.log(document.data());
-  // });
 
 }
 
@@ -66,24 +81,17 @@ export default function Map() {
     let location = await Location.getCurrentPositionAsync({});
     setUserLocation(location);
 
-    // TODO add notification here
+    // set recent emergency
+    checkForEmergenciesUpdate(setRecentEmergency);
 
-    const db = getFirestore(app);
-    const unsub = onSnapshot(doc(db, "emergencies", "most-recent"), doc => {
-      const cloudRecentEmergency = doc.data();
-      console.log(cloudRecentEmergency?.timeOccured.seconds, recentEmergency.timeOccured.seconds);
-      if (recentEmergency.timeOccured.seconds === 0 || recentEmergency.timeOccured.seconds !== cloudRecentEmergency?.timeOccured.seconds) {
-        // the timestamp has updated, there is a new emergency
-        // send notif and add new marker to map
-        setRecentEmergency(cloudRecentEmergency, () => {
-          console.log("yup");
-          setTimeout(foregroundFetchEmergenciesAndNotify, 1000 * 30); // repeat in 30 seconds
-        });
-        
-      }
-    });
+    setTimeout(foregroundFetchEmergenciesAndNotify, 1000 * 30); // repeat in 30 seconds
 
   };
+
+  useEffect(() => {
+    console.log("updated timestamp", recentEmergencyTimestamp);
+    console.log("updated recentemergency timestamp", recentEmergency.timeOccured.seconds);
+  }, [recentEmergency]);
 
   useEffect(() => {
     (async () => {
@@ -103,14 +111,14 @@ export default function Map() {
       setUserLocation(location);
 
       // register background fetch
-      BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK, {
+      await BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK, {
         minimumInterval: 5, // seconds (actually fires every 30 seconds but im too scared to touch this)
         stopOnTerminate: false,
         startOnBoot: true
       });
 
       // register foreground fetch
-      foregroundFetchEmergenciesAndNotify();
+      await foregroundFetchEmergenciesAndNotify();
 
       // old background location code
 
