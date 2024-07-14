@@ -1,19 +1,24 @@
-import MapView from "react-native-maps";
+import MapView, { Circle } from "react-native-maps";
 import { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as Notifications from 'expo-notifications';
+import { Image as ExpoImage } from 'expo-image';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from "react";
-import { Alert, Image, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Button, Platform, Image, ScrollView, StyleSheet, Switch, Text, View, ImageBackground, Pressable } from "react-native";
 import Constants from 'expo-constants';
 import { app } from '@/firebaseConfig.js';
-import { getFirestore, collection, getDocs, doc, onSnapshot, DocumentData } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, onSnapshot, DocumentData, query } from 'firebase/firestore';
 
 // const LOCATION_TASK_NAME = 'background-location-task';
 // const BACKGROUND_FETCH_TASK = 'background-fetch';
 
 let recentEmergencyTimestamp = 0;
+
+let unsubscribeOne = () => {};
+let unsubscribeTwo = () => {};
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -26,11 +31,23 @@ Notifications.setNotificationHandler({
 const sendNotification = () => {
   Notifications.scheduleNotificationAsync({
     content: {
-      title: "New Emergency",
-      body: "Click to view dashboard."
+      title: "New LifeLink Emergency",
+      body: "Click to view LifeLink dashboard."
     },
     trigger: null
   });
+}
+
+const deselectedEmergency = {
+  diagnosis: "NO EMERGENCY SELECTED",
+  image: "",
+  latitude: 0,
+  longitude: 0,
+  symptoms: [],
+  timeOccured: {
+    nanoseconds: 0,
+    seconds: 0
+  }
 }
 
 // const checkForEmergenciesUpdate = async (callback: any) => {
@@ -52,40 +69,36 @@ const sendNotification = () => {
 //   return BackgroundFetch.BackgroundFetchResult.NewData; // finish
 // });
 
-export default function Map() {
+export default function Map({savedIsOnDuty, savedIsDispatcher}: any) {
+
+  recentEmergencyTimestamp = 0;
 
   const [userLocation, setUserLocation]: any = useState({
-    coords: { // some default coords in san francisco cus why not
-      latitude: 37,
-      longitude: -122
+    coords: {
+      latitude: 0,
+      longitude: 0
     }
   });
 
-  const [recentEmergency, setRecentEmergency]: any = useState({
-    diagnosis: "Loading...",
-    image: "",
-    latitude: 0,
-    longitude: 0,
-    symptoms: [],
-    timeOccured: {
-      nanoseconds: 0,
-      seconds: 0
-    }
-  });
+  const [recentEmergency, setRecentEmergency]: any = useState(deselectedEmergency);
 
   const [otherEmergencies, setOtherEmergencies]: any = useState([]);
 
   const [selectedEmergency, setSelectedEmergency]: any = useState(recentEmergency);
-
-  const [selectedEmergencyTimeElapsedString, setSelectedEmergencyTimeElapsedString]: any = useState("Loading...");
-
-  const [selectedEmergencyLocationString, setSelectedEmergencyLocationString]: any = useState("Loading...");
-
-  const [selectedEmergencyDiagnosisString, setSelectedEmergencyDiagnosisString]: any = useState("Loading...");
-
-  const [selectedEmergencyImageString, setSelectedEmergencyImageString]: any = useState("Loading...");
+  const [selectedEmergencyTimeElapsedString, setSelectedEmergencyTimeElapsedString]: any = useState("NO EMERGENCY SELECTED");
+  const [selectedEmergencyLocationString, setSelectedEmergencyLocationString]: any = useState("NO EMERGENCY SELECTED");
+  const [selectedEmergencyDiagnosisString, setSelectedEmergencyDiagnosisString]: any = useState("NO EMERGENCY SELECTED.");
+  const [selectedEmergencyImageString, setSelectedEmergencyImageString]: any = useState("");
 
   const [currentTime, setCurrentTime]: any = useState(0);
+
+  const [isOnDuty, setIsOnDuty]: any = useState(savedIsOnDuty);
+  const [isDispatcher, setIsDispatcher]: any = useState(savedIsDispatcher);
+
+  const [isDropdownShown, setIsDropdownShown]: any = useState(false);
+
+  const [showRecentEmergency, setShowRecentEmergency]: any = useState(true);
+  const [showOtherEmergencies, setShowOtherEmergencies]: any = useState([]);
 
   // const foregroundFetchEmergenciesAndNotify = async () => {
 
@@ -126,57 +139,6 @@ export default function Map() {
       let location = await Location.getCurrentPositionAsync({});
       setUserLocation(location);
 
-      // prepare notifications
-      // set notification channel
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C'
-      });
-      // get perms
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-      if (finalStatus !== 'granted') {
-        Alert.alert('Notification permissions are required for this app to work. Please grant notification permissions in Settings.');
-        return;
-      }
-
-      // get recent emergency
-      const db = getFirestore(app);
-
-      const unsubscribe = onSnapshot(doc(db, "emergencies", "most-recent"), doc => {
-        const cloudRecentEmergency = doc.data();
-        const cloudRecentEmergencyTimestamp = cloudRecentEmergency?.timeOccured.seconds;
-
-        // console.log("comparing timestamps", cloudRecentEmergencyTimestamp, recentEmergencyTimestamp);
-        
-        if ((recentEmergencyTimestamp === 0) || (recentEmergencyTimestamp != cloudRecentEmergencyTimestamp)) {
-          // the timestamp has updated, there is a new emergency
-          // send notif and add new marker to map
-
-          recentEmergencyTimestamp = cloudRecentEmergencyTimestamp;
-          setRecentEmergency(cloudRecentEmergency);
-          // callback(cloudRecentEmergency); // runs upon successful change
-
-          sendNotification();
-          
-        }
-      });
-
-      // get all other emergencies
-      const query = await getDocs(collection(db, "otherEmergencies"));
-      let temp: any[] = [];
-      query.forEach(doc => {
-        temp.push(doc.data());
-        sendNotification();
-      });
-      setOtherEmergencies(temp);
-
       // periodically update time
       setInterval(() => {
         setCurrentTime(Math.floor(Date.now()/1000));
@@ -205,11 +167,127 @@ export default function Map() {
   }, []);
 
   useEffect(() => {
+
+    // console.log("before")
+    if (userLocation.coords.latitude == 0 && userLocation.coords.longitude == 0) return;
+    // console.log("after")
+    
+    unsubscribeOne();
+    unsubscribeTwo();
+
+    (async () => {
+      // prepare notifications
+      // set notification channel
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C'
+      });
+      // get perms
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        Alert.alert('Notification permissions are required for this app to work. Please grant notification permissions in Settings.');
+        return;
+      }
+
+      // get recent emergency
+      const db = getFirestore(app);
+
+      unsubscribeOne = onSnapshot(doc(db, "emergencies", "most-recent"), doc => {
+
+        if (!isOnDuty) return;
+
+        const cloudRecentEmergency = doc.data();
+        const cloudRecentEmergencyTimestamp = cloudRecentEmergency?.timeOccured.seconds;
+
+        // console.log("comparing timestamps", cloudRecentEmergencyTimestamp, recentEmergencyTimestamp);
+        
+        if ((recentEmergencyTimestamp === 0) || (recentEmergencyTimestamp != cloudRecentEmergencyTimestamp)) {
+          // the timestamp has updated, there is a new emergency
+          // send notif and add new marker to map
+          // callback(cloudRecentEmergency); // runs upon successful change
+
+          recentEmergencyTimestamp = cloudRecentEmergencyTimestamp;
+
+          if (!isDispatcher) {
+            // get euclidean distance
+            const locationDelta = Math.sqrt(
+              Math.pow(cloudRecentEmergency?.latitude - userLocation.coords.latitude, 2) +
+              Math.pow(cloudRecentEmergency?.longitude - userLocation.coords.longitude, 2)
+            );
+            // check if below threshold
+            if (locationDelta < 0.01) {
+              setRecentEmergency(cloudRecentEmergency);
+              sendNotification();
+            }
+          } else {
+            setRecentEmergency(cloudRecentEmergency);
+            sendNotification();
+          }
+          
+        }
+      });
+
+      // get all other emergencies
+      const q = query(collection(db, "otherEmergencies"));
+      unsubscribeTwo = onSnapshot(q, (querySnapshot) => {
+
+        if (!isOnDuty) return;
+
+        let temp: any[] = [];
+        let tempBools: string[] = [];
+        querySnapshot.forEach(doc => {
+
+          const cloudOtherEmergency = doc.data();
+
+          if (!isDispatcher) {
+            // get euclidean distance
+            const locationDelta = Math.sqrt(
+              Math.pow(cloudOtherEmergency?.latitude - userLocation.coords.latitude, 2) +
+              Math.pow(cloudOtherEmergency?.longitude - userLocation.coords.longitude, 2)
+            );
+            // check if below threshold
+            if (locationDelta < 0.01) {
+              temp.push(cloudOtherEmergency);
+              tempBools.push('true');
+              sendNotification();
+            }
+          } else {
+            temp.push(cloudOtherEmergency);
+            tempBools.push('true');
+            sendNotification();
+          }
+          
+        });
+        setOtherEmergencies(temp);
+        setShowOtherEmergencies(tempBools);
+
+      });
+
+    })();
+  }, [userLocation, isDispatcher, isOnDuty]);
+
+  // DEBUG
+  // useEffect(() => {
+  //   console.log(userLocation)
+  // }, [userLocation])
+
+  useEffect(() => {
     setSelectedEmergency(recentEmergency);
   }, [recentEmergency]);
 
   useEffect(() => {
-    setSelectedEmergencyTimeElapsedString(secondsToReading(currentTime - selectedEmergency.timeOccured.seconds));
+    if (selectedEmergency.timeOccured.seconds == 0) {
+      setSelectedEmergencyTimeElapsedString("NO EMERGENCY SELECTED");
+    } else {
+      setSelectedEmergencyTimeElapsedString(secondsToReading(currentTime - selectedEmergency.timeOccured.seconds));
+    }
   }, [selectedEmergency, currentTime]);
 
   useEffect(() => {
@@ -220,7 +298,11 @@ export default function Map() {
     })
       .then(res => res.json())
       .then(res => {
-        setSelectedEmergencyLocationString(res.display_name);
+        if (res.display_name == "Soul Buoy") { // location at 0,0
+          setSelectedEmergencyLocationString("NO EMERGENCY SELECTED");
+        } else {
+          setSelectedEmergencyLocationString(res.display_name);
+        }
       })
       .catch(error => {
         setSelectedEmergencyLocationString(`${selectedEmergency.latitude}, ${selectedEmergency.longitude}`);
@@ -232,14 +314,46 @@ export default function Map() {
 
   return (
     <View className="mx-4 flex h-max flex-1">
-      <Text className="text-xl text-stone-800 font-bold mb-2">Active Alerts:</Text>
-      <View className="border-8 rounded-lg border-stone-400 h-2/5 opacity-90">
+      {isDropdownShown &&
+        <>
+          <View className="flex flex-row items-center bg-stone-300 p-2 m-1 rounded-full">
+            <Text className="flex-1">Are You On Duty?</Text>
+            <Switch
+              className="h-4"
+              trackColor={{false: "grey", true: "salmon"}}
+              thumbColor={isOnDuty ? "red" : "grey"}
+              onValueChange={() => setIsOnDuty(!isOnDuty)}
+              value={isOnDuty}
+            />
+          </View>
+          <View className="flex flex-row items-center bg-stone-300 p-2 m-1 rounded-full">
+            <Text className="flex-1">Are You A Dispatcher?</Text>
+            <Switch
+              className="h-4"
+              trackColor={{false: "grey", true: "salmon"}}
+              thumbColor={isDispatcher ? "red" : "grey"}
+              onValueChange={() => setIsDispatcher(!isDispatcher)}
+              value={isDispatcher}
+            />
+          </View>
+        </>
+      }
+      <View className="flex flex-row items-center mb-1">
+        <Text className="text-2xl text-stone-800 font-bold flex-1">EMERGENCIES:</Text>
+        <Pressable onPress={() => {router.replace(`/chat?isOnDuty=${isOnDuty}&isDispatcher=${isDispatcher}` as any)}}>
+          <View className="py-2 px-6 my-2 ml-2 rounded-full bg-[#FC4F42]"><ExpoImage source={require("@/assets/images/chat.png")} className="w-4 h-4" /></View>
+        </Pressable>
+        <Pressable onPress={() => {setIsDropdownShown(!isDropdownShown)}}>
+          <View className="py-2 px-6 my-2 ml-2 rounded-full bg-[#FC4F42]"><ExpoImage source={require("@/assets/images/gear.png")} className="w-4 h-4" /></View>
+        </Pressable>
+      </View>
+      <View className="border-8 rounded-lg border-stone-600 h-2/5 opacity-90">
         <MapView className="w-max h-full pointer-events-auto"
           region={{
             latitude: userLocation.coords.latitude,
             longitude: userLocation.coords.longitude,
-            latitudeDelta: 0.004,
-            longitudeDelta: 0.004,
+            latitudeDelta: 0.02,
+            longitudeDelta: 0.02,
           }}
         >
           <Marker
@@ -249,15 +363,23 @@ export default function Map() {
             description={"You are here."}
             pinColor={"gold"}
           />
-          <Marker
-            key={-1}
-            coordinate={{ latitude: recentEmergency.latitude, longitude: recentEmergency.longitude }}
-            title={"Emergency"}
-            description={selectedEmergencyLocationString}
-            onPress={() => {setSelectedEmergency(recentEmergency)}}
+          <Circle
+            center={userLocation.coords}
+            radius={1000}
+            fillColor="rgba(255,255,0,0.3)"
+            // strokeWidth={0}
           />
+          {showRecentEmergency &&
+            <Marker
+              key={-1}
+              coordinate={{ latitude: recentEmergency.latitude, longitude: recentEmergency.longitude }}
+              title={"Emergency"}
+              description={selectedEmergencyLocationString}
+              onPress={() => {setSelectedEmergency(recentEmergency)}}
+            />
+          }
           {otherEmergencies.map((otherEmergency: any, index: number) => {
-            return (<Marker
+            return ((showOtherEmergencies[index] ? (showOtherEmergencies[index] === 'true') : false) && <Marker
               key={index}
               coordinate={{ latitude: otherEmergency.latitude, longitude: otherEmergency.longitude }}
               title={"Emergency"}
@@ -284,9 +406,25 @@ export default function Map() {
           <Text className="font-bold text-md text-stone-800 mb-1">Diagnosis <Text className="italic">(Warning: This is AI-generated and not official medical advice)</Text>:</Text>
           <Text className="bg-stone-200 p-2 rounded-lg mb-1">{selectedEmergencyDiagnosisString}</Text>
           <Text className="font-bold text-md text-stone-800 mb-1">Victim Image:</Text>
-          <View className="h-96 border-8 border-stone-200 rounded-lg">
+          <View className="h-96 border-8 border-stone-200 rounded-lg mb-2">
             <Image className="object-contain h-full" source={{uri: `data:image/jpg;base64,${selectedEmergencyImageString}`}} />
           </View>
+          {isDispatcher &&
+            <Button title="Dismiss Emergency" color="red" onPress={() => {
+              if (selectedEmergency == recentEmergency) {
+                setShowRecentEmergency(false);
+              } else {
+                otherEmergencies.forEach((otherEmergency: any, index: number) => {
+                  if (selectedEmergency == otherEmergency) {
+                    let temp = showOtherEmergencies;
+                    temp[index] = false;
+                    setShowOtherEmergencies(temp);
+                  }
+                });
+              }
+              setSelectedEmergency(deselectedEmergency);
+            }} />
+          }
         </ScrollView>
       </View>
     </View>

@@ -45,7 +45,8 @@
     "react-native-svg": "14.1.0",
     "react-native-web": "~0.19.10",
     "react-native-webview": "13.6.4",
-    "expo-notifications": "~0.27.8"
+    "expo-notifications": "~0.27.8",
+    "expo-image": "~1.10.6"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
