@@ -1,8 +1,7 @@
 import Map from "@/components/Map";
-import { Text, View, StatusBar, Pressable } from "react-native";
+import { Text, View, StatusBar } from "react-native";
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from "react-native-safe-area-context";
-import Suitcase from '@/assets/images/suitcase.svg';
 import { useEffect } from "react";
 import { useLocalSearchParams } from "expo-router";
 

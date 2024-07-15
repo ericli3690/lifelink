@@ -1,16 +1,13 @@
 import MapView, { Circle } from "react-native-maps";
 import { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
-import * as TaskManager from 'expo-task-manager';
-import * as BackgroundFetch from 'expo-background-fetch';
 import * as Notifications from 'expo-notifications';
 import { Image as ExpoImage } from 'expo-image';
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Platform, Image, ScrollView, StyleSheet, Switch, Text, View, ImageBackground, Pressable } from "react-native";
-import Constants from 'expo-constants';
+import { useEffect, useState } from "react";
+import { Alert, Button, Image, ScrollView, Switch, Text, View, Pressable } from "react-native";
 import { app } from '@/firebaseConfig.js';
-import { getFirestore, collection, getDocs, doc, onSnapshot, DocumentData, query } from 'firebase/firestore';
+import { getFirestore, collection, doc, onSnapshot, query } from 'firebase/firestore';
 
 // const LOCATION_TASK_NAME = 'background-location-task';
 // const BACKGROUND_FETCH_TASK = 'background-fetch';
@@ -107,7 +104,7 @@ export default function Map({savedIsOnDuty, savedIsDispatcher, savedUserID}: any
 
   const foregroundFetchEmergenciesAndNotify = async () => {
 
-    console.log(`Foreground fetch fired at ${new Date().toUTCString()}.`);
+    // console.log(`Foreground fetch fired at ${new Date().toUTCString()}.`);
 
     // set location
     let location = await Location.getCurrentPositionAsync({});
