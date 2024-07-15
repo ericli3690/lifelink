@@ -1,5 +1,5 @@
 import MapView, { Circle } from "react-native-maps";
-import { Marker } from 'react-native-maps';
+import { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
@@ -15,7 +15,9 @@ import { getFirestore, collection, getDocs, doc, onSnapshot, DocumentData, query
 // const LOCATION_TASK_NAME = 'background-location-task';
 // const BACKGROUND_FETCH_TASK = 'background-fetch';
 
-let recentEmergencyTimestamp = 0;
+// let recentEmergencyTimestamp = 0;
+
+let foregroundActivated = false;
 
 let unsubscribeOne = () => {};
 let unsubscribeTwo = () => {};
@@ -69,9 +71,9 @@ const deselectedEmergency = {
 //   return BackgroundFetch.BackgroundFetchResult.NewData; // finish
 // });
 
-export default function Map({savedIsOnDuty, savedIsDispatcher}: any) {
+export default function Map({savedIsOnDuty, savedIsDispatcher, savedUserID}: any) {
 
-  recentEmergencyTimestamp = 0;
+  // recentEmergencyTimestamp = 0;
 
   const [userLocation, setUserLocation]: any = useState({
     coords: {
@@ -81,6 +83,7 @@ export default function Map({savedIsOnDuty, savedIsDispatcher}: any) {
   });
 
   const [recentEmergency, setRecentEmergency]: any = useState(deselectedEmergency);
+  const [recentEmergencyTimestamp, setRecentEmergencyTimestamp]: any = useState(0);
 
   const [otherEmergencies, setOtherEmergencies]: any = useState([]);
 
@@ -100,20 +103,19 @@ export default function Map({savedIsOnDuty, savedIsDispatcher}: any) {
   const [showRecentEmergency, setShowRecentEmergency]: any = useState(true);
   const [showOtherEmergencies, setShowOtherEmergencies]: any = useState([]);
 
-  // const foregroundFetchEmergenciesAndNotify = async () => {
+  const [userID, setUserID]: any = useState(savedUserID);
 
-  //   console.log(`Foreground fetch fired at ${new Date().toUTCString()}.`);
+  const foregroundFetchEmergenciesAndNotify = async () => {
 
-  //   // set location
-  //   let location = await Location.getCurrentPositionAsync({});
-  //   setUserLocation(location);
+    console.log(`Foreground fetch fired at ${new Date().toUTCString()}.`);
 
-  //   // set recent emergency
-  //   checkForEmergenciesUpdate(setRecentEmergency);
+    // set location
+    let location = await Location.getCurrentPositionAsync({});
+    setUserLocation(location);
 
-  //   setTimeout(foregroundFetchEmergenciesAndNotify, 1000 * 30); // repeat in 30 seconds
+    setTimeout(foregroundFetchEmergenciesAndNotify, 1000 * 30); // repeat in 30 seconds
 
-  // };
+  };
 
   // DEBUG
   // useEffect(() => {
@@ -152,8 +154,11 @@ export default function Map({savedIsOnDuty, savedIsDispatcher}: any) {
       // });
 
       // register foreground fetch
-      // await foregroundFetchEmergenciesAndNotify();
-
+      if (!foregroundActivated) {
+        await foregroundFetchEmergenciesAndNotify();
+        foregroundActivated = true;
+      }
+      
       // old background location code
 
       // await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
@@ -168,9 +173,7 @@ export default function Map({savedIsOnDuty, savedIsDispatcher}: any) {
 
   useEffect(() => {
 
-    // console.log("before")
     if (userLocation.coords.latitude == 0 && userLocation.coords.longitude == 0) return;
-    // console.log("after")
     
     unsubscribeOne();
     unsubscribeTwo();
@@ -213,7 +216,7 @@ export default function Map({savedIsOnDuty, savedIsDispatcher}: any) {
           // send notif and add new marker to map
           // callback(cloudRecentEmergency); // runs upon successful change
 
-          recentEmergencyTimestamp = cloudRecentEmergencyTimestamp;
+          setRecentEmergencyTimestamp(cloudRecentEmergencyTimestamp);
 
           if (!isDispatcher) {
             // get euclidean distance
@@ -224,10 +227,14 @@ export default function Map({savedIsOnDuty, savedIsDispatcher}: any) {
             // check if below threshold
             if (locationDelta < 0.01) {
               setRecentEmergency(cloudRecentEmergency);
+              setShowRecentEmergency(true);
               sendNotification();
+            } else {
+              setShowRecentEmergency(false);
             }
           } else {
             setRecentEmergency(cloudRecentEmergency);
+            setShowRecentEmergency(true);
             sendNotification();
           }
           
@@ -338,17 +345,19 @@ export default function Map({savedIsOnDuty, savedIsDispatcher}: any) {
           </View>
         </>
       }
-      <View className="flex flex-row items-center mb-1">
+      <View className="flex flex-row items-center">
         <Text className="text-2xl text-stone-800 font-bold flex-1">EMERGENCIES:</Text>
-        <Pressable onPress={() => {router.replace(`/chat?isOnDuty=${isOnDuty}&isDispatcher=${isDispatcher}` as any)}}>
+        <Pressable onPress={() => {router.replace(`/chat?isOnDuty=${isOnDuty}&isDispatcher=${isDispatcher}&userID=${userID}` as any)}}>
           <View className="py-2 px-6 my-2 ml-2 rounded-full bg-[#FC4F42]"><ExpoImage source={require("@/assets/images/chat.png")} className="w-4 h-4" /></View>
         </Pressable>
         <Pressable onPress={() => {setIsDropdownShown(!isDropdownShown)}}>
           <View className="py-2 px-6 my-2 ml-2 rounded-full bg-[#FC4F42]"><ExpoImage source={require("@/assets/images/gear.png")} className="w-4 h-4" /></View>
         </Pressable>
       </View>
+      <Text className="w-max text-center mb-2">Tap a red pin to view its corresponding emergency.</Text>
       <View className="border-8 rounded-lg border-stone-600 h-2/5 opacity-90">
         <MapView className="w-max h-full pointer-events-auto"
+          provider={PROVIDER_GOOGLE}
           region={{
             latitude: userLocation.coords.latitude,
             longitude: userLocation.coords.longitude,

@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "lifelink",
+    "name": "LifeLink",
     "slug": "lifelink",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/favicon.png",
     "scheme": "myapp",
     "notification": {
-      "icon": "./assets/images/icon2.png",
+      "icon": "./assets/images/icon.png",
       "color": "#FC4F42"
     },
     "userInterfaceStyle": "automatic",
@@ -28,9 +28,17 @@
         "android.permission.INTERNET",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
-        "android.permission.BACKGROUND_SERVICE_LOCATION"
+        "android.permission.BACKGROUND_SERVICE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
       ],
-      "package": "com.anonymous.lifelink"
+      "package": "com.anonymous.lifelink",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBp8N1SvnqS5mBMJT9-V25BCo0RWkpLGF0"
+        }
+      }
     },
     "web": {
       "bundler": "metro",
@@ -49,7 +57,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/icon2.png",
+          "icon": "./assets/images/icon.png",
           "color": "#FC4F42",
           "defaultChannel": "default"
         }
@@ -58,6 +66,14 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "95b6a19e-73de-40b5-8e7a-f70d1f587353"
+      }
     }
   }
 }

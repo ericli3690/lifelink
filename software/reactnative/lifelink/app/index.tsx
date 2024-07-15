@@ -8,10 +8,11 @@ import { useLocalSearchParams } from "expo-router";
 
 export default function Index() {
 
-  const { isOnDuty, isDispatcher } = useLocalSearchParams();
+  const { isOnDuty, isDispatcher, userID } = useLocalSearchParams();
 
   const savedIsOnDuty = isOnDuty ? (isOnDuty === 'true') : true;
   const savedIsDispatcher = isDispatcher ? (isDispatcher === 'true') : false;
+  const savedUserID = userID || (Math.floor(Math.random() * 999999999) + 1).toString();
 
   useEffect(() => {
     StatusBar.setBackgroundColor("#FC4F42");
@@ -28,7 +29,7 @@ export default function Index() {
       </View>
 
       <SafeAreaView className="bg-stone-200 flex flex-1">
-        <Map savedIsOnDuty={savedIsOnDuty} savedIsDispatcher={savedIsDispatcher} />
+        <Map savedIsOnDuty={savedIsOnDuty} savedIsDispatcher={savedIsDispatcher} savedUserID={savedUserID} />
       </SafeAreaView>
     </View>
   );
